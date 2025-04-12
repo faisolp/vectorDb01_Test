@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-สคริปต์ทดสอบ OCR และ Tika สำหรับภาษาไทย
+สคริปต์ทดสอบ EasyOCR และ Tika สำหรับภาษาไทย
 """
 import os
 import sys
@@ -10,12 +10,12 @@ import argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.document.ocr_processor import OCRProcessor
-from tika import parser
+from tika import parser as tika_parser
 from src.config import OCR_LANG, OCR_CONFIG, OCR_DPI
 
-def test_tesseract_ocr(file_path, lang=None, config=None, dpi=None):
-    """ทดสอบการทำงานของ Tesseract OCR"""
-    print("\n=== ทดสอบ Tesseract OCR ===")
+def test_easyocr(file_path, lang=None, config=None, dpi=None):
+    """ทดสอบการทำงานของ EasyOCR"""
+    print("\n=== ทดสอบ EasyOCR ===")
     
     # ใช้ค่าที่กำหนดในไฟล์ config ถ้าไม่ได้ระบุ
     if lang is None:
@@ -33,7 +33,7 @@ def test_tesseract_ocr(file_path, lang=None, config=None, dpi=None):
         text = ocr.process_pdf(file_path, dpi=dpi)
         
         # แสดงผลลัพธ์
-        print("\n=== ผลลัพธ์จาก Tesseract OCR ===")
+        print("\n=== ผลลัพธ์จาก EasyOCR ===")
         
         # นับจำนวนตัวอักษรไทย
         thai_chars = 0
@@ -67,7 +67,7 @@ def test_tika_parser(file_path):
     try:
         # แปลงไฟล์ด้วย Tika
         print(f"กำลังแปลงไฟล์ด้วย Tika: {file_path}")
-        parsed = parser.from_file(file_path)
+        parsed = tika_parser.from_file(file_path)
         
         # ตรวจสอบว่ามีเนื้อหาหรือไม่
         if parsed['content']:
@@ -108,12 +108,11 @@ def test_tika_parser(file_path):
 
 def main():
     """ฟังก์ชันหลัก"""
-    parser = argparse.ArgumentParser(description="ทดสอบ OCR และ Tika สำหรับภาษาไทย")
+    parser = argparse.ArgumentParser(description="ทดสอบ EasyOCR และ Tika สำหรับภาษาไทย")
     parser.add_argument("file_path", help="พาธของไฟล์ PDF ที่ต้องการทดสอบ")
     parser.add_argument("--ocr-only", action="store_true", help="ทดสอบเฉพาะ OCR")
     parser.add_argument("--tika-only", action="store_true", help="ทดสอบเฉพาะ Tika")
     parser.add_argument("--lang", help=f"ภาษาที่ใช้ใน OCR (ค่าเริ่มต้น: {OCR_LANG})")
-    parser.add_argument("--config", help=f"การตั้งค่า OCR (ค่าเริ่มต้น: {OCR_CONFIG})")
     parser.add_argument("--dpi", type=int, help=f"ความละเอียด DPI (ค่าเริ่มต้น: {OCR_DPI})")
     
     args = parser.parse_args()
@@ -132,12 +131,12 @@ def main():
     
     # ทดสอบตามที่กำหนด
     if args.ocr_only:
-        test_tesseract_ocr(args.file_path, args.lang, args.config, args.dpi)
+        test_easyocr(args.file_path, args.lang, None, args.dpi)
     elif args.tika_only:
         test_tika_parser(args.file_path)
     else:
         # ทดสอบทั้ง OCR และ Tika
-        test_tesseract_ocr(args.file_path, args.lang, args.config, args.dpi)
+        test_easyocr(args.file_path, args.lang, None, args.dpi)
         test_tika_parser(args.file_path)
     
     print("\nการทดสอบเสร็จสิ้น")

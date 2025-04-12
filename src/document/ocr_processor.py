@@ -1,89 +1,64 @@
 """
-OCR Processor Module for handling PDF documents
+OCR Processor Module using EasyOCR for handling PDF documents
 """
 import os
 import re
 import time
 import numpy as np
-import pytesseract
+import easyocr
 from pdf2image import convert_from_path
 from PIL import Image, ImageEnhance, ImageFilter
-from src.config import OCR_DPI
+from src.config import OCR_DPI, OCR_LANG
 
 class OCRProcessor:
     """
-    คลาสสำหรับแปลงไฟล์ PDF เป็นข้อความด้วย OCR
+    คลาสสำหรับแปลงไฟล์ PDF เป็นข้อความด้วย EasyOCR
     """
-    def __init__(self, lang="tha", config="--psm 6 --oem 1"):
+    def __init__(self, lang=None, config=None,gpu=False):
         """
-        สร้าง instance ของ OCRProcessor
+        สร้าง instance ของ OCRProcessor ด้วย EasyOCR
         
         Args:
-            lang (str): ภาษาที่ใช้ในการ OCR (tha สำหรับภาษาไทย, eng สำหรับภาษาอังกฤษ, tha+eng สำหรับทั้งสองภาษา)
-            config (str): การตั้งค่า Tesseract OCR
-                - psm: Page segmentation modes
-                  - 0: Orientation and script detection only
-                  - 1: Automatic page segmentation with OSD
-                  - 3: Fully automatic page segmentation, but no OSD
-                  - 4: Assume a single column of text of variable sizes
-                  - 6: Assume a single uniform block of text (recommended for Thai)
-                  - 7: Treat the image as a single text line
-                  - 11: Sparse text. Find as much text as possible in no particular order
-                  - 12: Sparse text with OSD
-                - oem: OCR Engine modes
-                  - 0: Legacy engine only
-                  - 1: Neural nets LSTM engine only (recommended for Thai)
-                  - 2: Legacy + LSTM engines
-                  - 3: Default, based on what is available
+            lang (str): ภาษาที่ใช้ในการ OCR (th สำหรับภาษาไทย, en สำหรับภาษาอังกฤษ, หรือ ["th", "en"] สำหรับทั้งสองภาษา)
+            config (str): ไม่ใช้ใน EasyOCR (มีไว้เพื่อความเข้ากันได้กับโค้ดเดิม)
         """
-        self.lang = lang
-        self.config = config
-        # ตรวจสอบว่า Tesseract ติดตั้งแล้ว
+        # แปลงภาษาจากรูปแบบ Tesseract เป็น EasyOCR
+        self.langs = []
+        if lang is None:
+            lang = OCR_LANG
+            
+        # แปลงรูปแบบภาษาจาก Tesseract เป็น EasyOCR
+        if isinstance(lang, str):
+            if "+" in lang:  # เช่น "tha+eng"
+                lang_parts = lang.split("+")
+                for part in lang_parts:
+                    if part == "tha":
+                        self.langs.append("th")
+                    elif part == "eng":
+                        self.langs.append("en")
+            else:  # เช่น "tha" หรือ "eng"
+                if lang == "tha":
+                    self.langs.append("th")
+                elif lang == "eng":
+                    self.langs.append("en")
+        
+        # ถ้าไม่มีภาษาที่กำหนด ใช้ภาษาไทยและอังกฤษเป็นค่าเริ่มต้น
+        if not self.langs:
+            self.langs = ["th", "en"]
+            
+        # สร้าง EasyOCR Reader
         try:
-            tesseract_version = pytesseract.get_tesseract_version()
-            print(f"ใช้ Tesseract OCR เวอร์ชัน: {tesseract_version}")
-            print(f"ภาษาที่ใช้: {self.lang}")
-            print(f"ค่าตั้งค่า OCR: {self.config}")
-            
-            # ตรวจสอบว่ามีภาษาที่ต้องการหรือไม่
-            available_langs = pytesseract.get_languages()
-            print(f"ภาษาที่ติดตั้ง: {', '.join(available_langs)}")
-            
-            # ตรวจสอบภาษาไทย
-            if 'tha' in self.lang:
-                if 'tha' not in available_langs:
-                    print(f"⚠️ ไม่พบภาษาไทยในรายการภาษาที่ติดตั้ง")
-                    print("กำลังติดตั้งข้อมูลภาษาไทย...")
-                    print("โปรดใช้คำสั่ง: brew install tesseract-lang หรือ sudo apt-get install tesseract-ocr-tha")
-                    
-                    # ถ้าไม่มีภาษาไทย แต่ต้องการทั้งไทยและอังกฤษ
-                    if self.lang == 'tha+eng' and 'eng' in available_langs:
-                        print("ใช้ภาษาอังกฤษแทนชั่วคราว (ผลลัพธ์อาจไม่สมบูรณ์)")
-                        self.lang = "eng"
-                    # ถ้าต้องการเฉพาะภาษาไทย แต่ไม่มี
-                    elif self.lang == 'tha':
-                        print("ใช้ภาษาอังกฤษแทนชั่วคราว (ผลลัพธ์อาจไม่สมบูรณ์)")
-                        if 'eng' in available_langs:
-                            self.lang = "eng"
-                        else:
-                            raise ValueError("ไม่พบภาษาที่รองรับในระบบ กรุณาติดตั้งข้อมูลภาษาไทยหรือภาษาอังกฤษ")
-                else:
-                    print("✅ พบภาษาไทยในระบบ")
-                    
-                    # ปรับค่า config เหมาะสมกับภาษาไทย
-                    if self.config == "--psm 1 --oem 1":
-                        # ถ้าใช้ค่าเดิม แนะนำให้ใช้ค่าที่เหมาะกับภาษาไทยมากกว่า
-                        print("ปรับค่า config เป็น --psm 6 --oem 1 สำหรับภาษาไทย (แนะนำ)")
-                        self.config = "--psm 6 --oem 1"
-            
+            print(f"กำลังโหลด EasyOCR สำหรับภาษา: {', '.join(self.langs)}")
+            self.reader = easyocr.Reader(self.langs, gpu=gpu)
+            print(f"โหลด EasyOCR เรียบร้อยแล้ว")
         except Exception as e:
-            print(f"เกิดข้อผิดพลาดในการตรวจสอบ Tesseract OCR: {e}")
-            print("โปรดติดตั้ง Tesseract OCR: brew install tesseract tesseract-lang")
+            print(f"เกิดข้อผิดพลาดในการโหลด EasyOCR: {e}")
+            print("โปรดติดตั้ง EasyOCR: pip install easyocr")
             raise
     
     def process_pdf(self, pdf_path, dpi=None):
         """
-        แปลงไฟล์ PDF เป็นข้อความด้วย OCR
+        แปลงไฟล์ PDF เป็นข้อความด้วย EasyOCR
         
         Args:
             pdf_path (str): พาธของไฟล์ PDF
@@ -117,19 +92,24 @@ class OCRProcessor:
             try:
                 start_time = time.time()  # เริ่มจับเวลา
                 
-                # ปรับปรุงคุณภาพรูปภาพเพื่อเพิ่มความแม่นยำของ OCR
+                # ปรับปรุงคุณภาพรูปภาพ
                 img = self._preprocess_image(image)
                 
-                print(f"  กำลังทำ OCR: หน้า {i+1} (ภาษา={self.lang}, คอนฟิกูเรชัน={self.config})")
+                print(f"  กำลังทำ OCR: หน้า {i+1} (ภาษา={', '.join(self.langs)})")
                 
-                # ทำ OCR
-                text = pytesseract.image_to_string(img, lang=self.lang, config=self.config)
+                # ทำ OCR ด้วย EasyOCR
+                results = self.reader.readtext(np.array(img))
+                
+                # รวมผลลัพธ์จาก EasyOCR
+                page_text = ""
+                for bbox, text, prob in results:
+                    page_text += text + " "
                 
                 # ตรวจสอบว่ามีตัวอักษรภาษาไทยหรือไม่
-                if re.search(r'[\u0E00-\u0E7F]', text):
+                if re.search(r'[\u0E00-\u0E7F]', page_text):
                     has_thai_characters = True
                     print("  ✅ พบตัวอักษรภาษาไทยในผลลัพธ์ OCR")
-                elif 'tha' in self.lang:
+                elif 'th' in self.langs:
                     print("  ⚠️ ไม่พบตัวอักษรภาษาไทยในผลลัพธ์ OCR แม้จะระบุภาษาไทย")
                 
                 # วัดเวลาที่ใช้
@@ -137,12 +117,10 @@ class OCRProcessor:
                 print(f"  ใช้เวลา OCR: {process_time:.2f} วินาที")
                 
                 # ตรวจสอบผลลัพธ์เบื้องต้น
-                if len(text.strip()) < 10:
+                if len(page_text.strip()) < 10:
                     print("  ⚠️ ผลลัพธ์ OCR มีข้อความน้อยเกินไป อาจเกิดปัญหา")
-                elif "Image Recognition" in text and 'tha' in self.lang:
-                    print("  ⚠️ พบข้อความ 'Image Recognition' ซึ่งอาจเป็นปัญหาในการรู้จำภาษาไทย")
                     
-                text_content.append(text)
+                text_content.append(page_text)
             except Exception as e:
                 print(f"เกิดข้อผิดพลาดในการ OCR หน้า {i+1}: {e}")
                 text_content.append("")  # เพิ่มข้อความว่างถ้าเกิดข้อผิดพลาด
@@ -155,13 +133,11 @@ class OCRProcessor:
         clean_text = self._clean_text(full_text)
         
         # เช็คคุณภาพของผลลัพธ์
-        if 'tha' in self.lang and not has_thai_characters:
+        if 'th' in self.langs and not has_thai_characters:
             print("⚠️ คำเตือน: ไม่พบตัวอักษรภาษาไทยในผลลัพธ์ OCR แม้จะกำหนดให้รู้จำภาษาไทย")
             print("อาจเกิดจากสาเหตุดังนี้:")
-            print("1. ไม่ได้ติดตั้งข้อมูลภาษาไทยสำหรับ Tesseract")
+            print("1. ไม่มีข้อความภาษาไทยในเอกสาร")
             print("2. รูปภาพมีคุณภาพต่ำเกินไป ไม่สามารถรู้จำตัวอักษรไทยได้")
-            print("3. การตั้งค่า OCR ไม่เหมาะสมกับภาษาไทย")
-            print("แนะนำให้ติดตั้งข้อมูลภาษาไทยด้วยคำสั่ง: brew install tesseract-lang")
         
         # แสดงตัวอย่างข้อความที่ได้จาก OCR
         preview_length = min(500, len(clean_text))
@@ -193,27 +169,18 @@ class OCRProcessor:
         img = image.convert('L')
         
         # สำหรับภาษาไทยโดยเฉพาะ
-        if self.lang == 'tha' or 'tha' in self.lang:
-            # เพิ่มขนาดของภาพเพื่อให้อักขระภาษาไทยชัดเจนขึ้น
-            w, h = img.size
-            img = img.resize((w*3, h*3), Image.LANCZOS)  # เพิ่มขนาด 3 เท่า สำหรับภาษาไทย
-            
-            # เพิ่มความคมชัด (contrast) มากขึ้นสำหรับภาษาไทย
+        if "th" in self.langs:
+            # เพิ่มความคมชัด (contrast)
             enhancer = ImageEnhance.Contrast(img)
-            img = enhancer.enhance(2.5)  # เพิ่มความคมชัด 2.5 เท่าสำหรับภาษาไทย
-            
-            # ลบ noise ด้วย threshold
-            # ใช้ function threshold เพื่อแบ่งแยกสีขาวกับสีดำชัดเจน
-            # เหมาะสำหรับตัวอักษรภาษาไทยที่มีเส้นบางและวนโค้ง
-            img = img.point(lambda x: 0 if x < 150 else 255, '1')
+            img = enhancer.enhance(2.0)  # เพิ่มความคมชัด 2 เท่า
             
             # ปรับให้เส้นตัวอักษรชัดเจนขึ้น
-            img = img.filter(ImageFilter.EDGE_ENHANCE_MORE)
+            img = img.filter(ImageFilter.EDGE_ENHANCE)
         else:
             # สำหรับภาษาอื่น ใช้การปรับแต่งภาพทั่วไป
             # เพิ่มความคมชัด (contrast)
             enhancer = ImageEnhance.Contrast(img)
-            img = enhancer.enhance(2.0)  # เพิ่มความคมชัด 2 เท่า
+            img = enhancer.enhance(1.8)  # เพิ่มความคมชัด 1.8 เท่า
             
             # เพิ่มความคมชัดของขอบ (sharpen edges)
             img = img.filter(ImageFilter.SHARPEN)
@@ -238,20 +205,9 @@ class OCRProcessor:
             str: ข้อความที่ทำความสะอาดแล้ว
         """
         # สำหรับภาษาไทย
-        if self.lang == 'tha' or 'tha' in self.lang:
-            # ลบข้อความที่ไม่เกี่ยวข้องที่อาจเกิดจาก OCR เช่น "Image Recognition"
-            clean_text = re.sub(r'Image Recognition', '', text, flags=re.IGNORECASE)
-            clean_text = re.sub(r'Lanna lunisa\w*', '', clean_text, flags=re.IGNORECASE)
-            clean_text = re.sub(r'tiunrauszene la vector search', '', clean_text, flags=re.IGNORECASE)
-            
-            # แก้ไขปัญหาช่องว่างในคำภาษาไทย
-            # รวมตัวอักษรไทยที่ถูกแยกด้วยช่องว่าง
-            def combine_thai_chars(match):
-                return match.group(0).replace(' ', '')
-            
-            # จับกลุ่มตัวอักษรไทยที่มีช่องว่างคั่น และรวมเข้าด้วยกัน
-            pattern = r'[\u0E00-\u0E7F]+(\s+[\u0E00-\u0E7F]+)*'
-            clean_text = re.sub(pattern, combine_thai_chars, clean_text)
+        if "th" in self.langs:
+            # ลบข้อความที่ไม่เกี่ยวข้องที่อาจเกิดจาก OCR
+            clean_text = text
             
             # ลบเครื่องหมายพิเศษที่ไม่เกี่ยวข้องกับภาษาไทย
             clean_text = re.sub(r'[^\x20-\x7E\u0E00-\u0E7F\n]', '', clean_text)
@@ -259,20 +215,6 @@ class OCRProcessor:
             # แก้ไขปัญหาช่องว่างและบรรทัดใหม่
             clean_text = re.sub(r'\s+', ' ', clean_text)  # รวมช่องว่างหลายช่องเป็นหนึ่งช่อง
             clean_text = re.sub(r'\n\s*\n', '\n\n', clean_text)  # รวมบรรทัดว่างหลายบรรทัดเป็นสองบรรทัด
-            
-            # แก้ไขข้อความภาษาไทยที่มีปัญหา
-            # แทนที่อักขระที่มักถูก OCR แปลผิด (ใ → l, ไ → 1, etc.)
-            clean_text = clean_text.replace('l', 'ใ')
-            clean_text = clean_text.replace('1', 'ไ')
-            
-            # แก้ไขสระลอย (สระที่ถูกแยกออกจากพยัญชนะ)
-            vowel_patterns = [
-                (r'([ก-ฮ])\s+([\u0E31-\u0E3A\u0E47-\u0E4E])', r'\1\2'),  # พยัญชนะ + ช่องว่าง + สระบน/ล่าง/วรรณยุกต์
-                (r'([\u0E31-\u0E3A\u0E47-\u0E4E])\s+([ก-ฮ])', r'\1\2')   # สระบน/ล่าง/วรรณยุกต์ + ช่องว่าง + พยัญชนะ
-            ]
-            
-            for pattern, replacement in vowel_patterns:
-                clean_text = re.sub(pattern, replacement, clean_text)
         else:
             # สำหรับภาษาอื่น ๆ
             # ลบช่องว่างซ้ำซ้อน

@@ -22,7 +22,8 @@ CHUNK_OVERLAP = 200
 USE_OCR = False       # ใช้ OCR สำหรับการแปลง PDF เป็นข้อความ
 OCR_DPI = 800        # ความละเอียดของรูปภาพสำหรับ OCR (เพิ่มเป็น 800 เพื่อความแม่นยำในการรู้จำภาษาไทย)
 OCR_LANG = "tha+eng"  # ภาษาที่ใช้ในการ OCR (tha: ภาษาไทย, eng: ภาษาอังกฤษ, tha+eng: ทั้งสองภาษา)
-OCR_CONFIG = "--psm 6 --oem 1 -c preserve_interword_spaces=1"  # การตั้งค่า OCR (psm 6: Assume a single uniform block of text, oem 1: LSTM only)
-
+                      # เมื่อใช้ EasyOCR จะแปลงเป็น "th" และ "en" โดยอัตโนมัติ
+OCR_CONFIG = ""       # ไม่จำเป็นต้องใช้ใน EasyOCR แต่เก็บไว้เพื่อความเข้ากันได้
+OCR_GPU=True
 # Search configuration
 SEARCH_LIMIT = 5

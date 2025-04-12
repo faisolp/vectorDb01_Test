@@ -7,82 +7,42 @@ import sys
 import subprocess
 import platform
 
-def check_tesseract_install():
-    """ตรวจสอบว่าติดตั้ง Tesseract แล้วหรือไม่"""
+def check_easyocr_install():
+    """ตรวจสอบว่าติดตั้ง EasyOCR แล้วหรือไม่"""
     try:
-        result = subprocess.run(['tesseract', '--version'], 
-                                stdout=subprocess.PIPE, 
-                                stderr=subprocess.PIPE, 
-                                text=True)
-        if result.returncode == 0:
-            print(f"✅ พบ Tesseract OCR: {result.stdout.splitlines()[0]}")
-            return True
-        return False
-    except:
-        return False
-
-def check_tesseract_languages():
-    """ตรวจสอบภาษาที่ติดตั้งใน Tesseract"""
-    try:
-        result = subprocess.run(['tesseract', '--list-langs'], 
-                                stdout=subprocess.PIPE, 
-                                stderr=subprocess.PIPE, 
-                                text=True)
-        if result.returncode == 0:
-            output = result.stdout if result.stdout else result.stderr
-            langs = [lang.strip() for lang in output.splitlines()[1:]]
-            print(f"ภาษาที่ติดตั้ง ({len(langs)}): {', '.join(langs)}")
-            return langs
-        return []
-    except:
-        return []
-
-def install_tesseract():
-    """ติดตั้ง Tesseract OCR"""
-    system = platform.system()
-    
-    if system == "Darwin":  # macOS
-        print("กำลังติดตั้ง Tesseract OCR สำหรับ macOS...")
-        subprocess.run(['brew', 'install', 'tesseract'])
-    elif system == "Linux":
-        print("กำลังติดตั้ง Tesseract OCR สำหรับ Linux...")
-        subprocess.run(['sudo', 'apt-get', 'update'])
-        subprocess.run(['sudo', 'apt-get', 'install', '-y', 'tesseract-ocr'])
-    elif system == "Windows":
-        print("สำหรับ Windows กรุณาติดตั้ง Tesseract OCR ด้วยตนเอง:")
-        print("1. ดาวน์โหลดจาก: https://github.com/UB-Mannheim/tesseract/wiki")
-        print("2. ติดตั้งและเพิ่ม path ไปยัง environment variables")
-        return False
-    else:
-        print(f"ไม่รองรับระบบปฏิบัติการ: {system}")
-        return False
-    
-    return check_tesseract_install()
-
-def install_thai_language():
-    """ติดตั้งข้อมูลภาษาไทยสำหรับ Tesseract"""
-    system = platform.system()
-    
-    if system == "Darwin":  # macOS
-        print("กำลังติดตั้งข้อมูลภาษาไทยสำหรับ macOS...")
-        subprocess.run(['brew', 'install', 'tesseract-lang'])
-    elif system == "Linux":
-        print("กำลังติดตั้งข้อมูลภาษาไทยสำหรับ Linux...")
-        subprocess.run(['sudo', 'apt-get', 'install', '-y', 'tesseract-ocr-tha'])
-    elif system == "Windows":
-        print("สำหรับ Windows กรุณาติดตั้งภาษาไทยผ่าน installer หรือดาวน์โหลดไฟล์ภาษาไทยด้วยตนเอง")
-        return False
-    else:
-        print(f"ไม่รองรับระบบปฏิบัติการ: {system}")
-        return False
-    
-    # ตรวจสอบว่าติดตั้งภาษาไทยสำเร็จหรือไม่
-    langs = check_tesseract_languages()
-    if 'tha' in langs:
-        print("✅ ติดตั้งภาษาไทยสำหรับ Tesseract สำเร็จ")
+        subprocess.run([sys.executable, '-c', 'import easyocr'], 
+                        stdout=subprocess.PIPE, 
+                        stderr=subprocess.PIPE, 
+                        text=True, 
+                        check=True)
+        print(f"✅ พบ EasyOCR")
         return True
-    else:
-        print("❌ ไม่สามารถตรวจพบภาษาไทยหลังการติดตั้ง")
+    except:
+        print("❌ ไม่พบ EasyOCR")
+        return False
+
+def check_easyocr_languages():
+    """ตรวจสอบภาษาที่มีใน EasyOCR"""
+    try:
+        subprocess.run([sys.executable, '-c', 'import easyocr; reader = easyocr.Reader(["th","en"])'], 
+                        stdout=subprocess.PIPE, 
+                        stderr=subprocess.PIPE, 
+                        text=True)
+        print(f"✅ ภาษาไทยและภาษาอังกฤษพร้อมใช้งานใน EasyOCR")
+        return True
+    except:
+        print("❌ เกิดปัญหาในการโหลดภาษาไทยหรือภาษาอังกฤษใน EasyOCR")
+        return False
+
+def install_easyocr():
+    """ติดตั้ง EasyOCR"""
+    print("กำลังติดตั้ง EasyOCR...")
+    try:
+        subprocess.run([sys.executable, '-m', 'pip', 'install', 'easyocr'])
+        print("✅ ติดตั้ง EasyOCR สำเร็จ")
+        return True
+    except Exception as e:
+        print(f"❌ เกิดข้อผิดพลาดในการติดตั้ง EasyOCR: {e}")
         return False
 
 def install_tika():
@@ -130,7 +90,7 @@ def install_java():
 
 def install_other_packages():
     """ติดตั้งแพคเกจอื่นๆ ที่จำเป็น"""
-    packages = ['pytesseract', 'pdf2image', 'pillow']
+    packages = ['pdf2image', 'pillow']
     
     for package in packages:
         try:
@@ -162,18 +122,12 @@ def check_environment():
     """ตรวจสอบสภาพแวดล้อมทั้งหมด"""
     print("\n=== ตรวจสอบสภาพแวดล้อมสำหรับ OCR ===")
     
-    # ตรวจสอบ Tesseract
-    tesseract_installed = check_tesseract_install()
-    if not tesseract_installed:
-        print("❌ ไม่พบ Tesseract OCR")
+    # ตรวจสอบ EasyOCR
+    easyocr_installed = check_easyocr_install()
     
-    # ตรวจสอบภาษาไทย
-    if tesseract_installed:
-        langs = check_tesseract_languages()
-        if 'tha' in langs:
-            print("✅ พบข้อมูลภาษาไทยสำหรับ Tesseract")
-        else:
-            print("❌ ไม่พบข้อมูลภาษาไทยสำหรับ Tesseract")
+    # ตรวจสอบภาษาของ EasyOCR
+    if easyocr_installed:
+        check_easyocr_languages()
     
     # ตรวจสอบ Java (สำหรับ Tika)
     try:
@@ -189,7 +143,7 @@ def check_environment():
     
     # ตรวจสอบแพคเกจ Python
     print("\nกำลังตรวจสอบแพคเกจ Python...")
-    packages = ['tika', 'pytesseract', 'pdf2image', 'pillow']
+    packages = ['tika', 'easyocr', 'pdf2image', 'pillow']
     
     for package in packages:
         try:
@@ -209,14 +163,9 @@ def main():
     choice = input("\nต้องการติดตั้งแพคเกจที่จำเป็นหรือไม่? (y/n): ").lower()
     
     if choice == 'y':
-        # ติดตั้ง Tesseract
-        if not check_tesseract_install():
-            install_tesseract()
-        
-        # ติดตั้งภาษาไทย
-        langs = check_tesseract_languages()
-        if 'tha' not in langs:
-            install_thai_language()
+        # ติดตั้ง EasyOCR
+        if not check_easyocr_install():
+            install_easyocr()
         
         # ติดตั้ง Tika
         install_tika()

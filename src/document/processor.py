@@ -6,7 +6,7 @@ import datetime
 import importlib.util
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from src.document.ocr_processor import OCRProcessor
-from src.config import CHUNK_SIZE, CHUNK_OVERLAP, USE_OCR, OCR_LANG, OCR_CONFIG
+from src.config import CHUNK_SIZE, CHUNK_OVERLAP, USE_OCR, OCR_LANG, OCR_CONFIG,OCR_GPU
 from tika import parser as tika_parser
 
 class DocumentProcessor:
@@ -38,10 +38,10 @@ class DocumentProcessor:
         
         if self.use_ocr:
             try:
-                self.ocr_processor = OCRProcessor(lang=self.ocr_lang, config=self.ocr_config)
-                print("เปิดใช้งาน OCR สำหรับการแปลงไฟล์ PDF")
+                self.ocr_processor = OCRProcessor(lang=self.ocr_lang, config=self.ocr_config,gpu=OCR_GPU)
+                print("เปิดใช้งาน EasyOCR สำหรับการแปลงไฟล์ PDF")
             except Exception as e:
-                print(f"ไม่สามารถใช้งาน OCR ได้: {e}")
+                print(f"ไม่สามารถใช้งาน EasyOCR ได้: {e}")
                 print("จะใช้วิธีการแปลงแบบปกติแทน")
                 self.use_ocr = False
     
@@ -106,27 +106,26 @@ class DocumentProcessor:
         
         # ใช้ OCR หรือวิธีปกติในการแปลง PDF เป็นข้อความ
         if self.use_ocr:
+            print(f"กำลังแปลง PDF เป็นข้อความด้วย EasyOCR: {file_path}")
             text = self.ocr_processor.process_pdf(file_path)
         else:
             # ใช้ Tika parser
-        
-                print(f"กำลังแปลง PDF เป็นข้อความด้วย Tika parser: {file_path}")
-                try:
-                    parsed_pdf = tika_parser.from_file(file_path)
-                    text = parsed_pdf['content'] if parsed_pdf['content'] else ""
-                    if not text:
-                        print("⚠️ Tika ไม่สามารถแยกข้อความจาก PDF ได้ หรือไฟล์ไม่มีข้อความ")
-                        print("กรุณาลองใช้ OCR (ตั้งค่า USE_OCR = True) เพื่อแปลง PDF เป็นข้อความ")
-                        text = ""
-                    else:
-                        preview_length = min(500, len(text))
-                        print(f"Tika แยกข้อความได้ {len(text)} ตัวอักษร")
-                        print(f"ตัวอย่างข้อความ: {text[:preview_length]}...")
-                except Exception as e:
-                    print(f"⚠️ เกิดข้อผิดพลาดในการใช้ Tika: {e}")
-                    print("กรุณาลองใช้ OCR (ตั้งค่า USE_OCR = True) เพื่อแปลง PDF เป็นข้อความ")
+            print(f"กำลังแปลง PDF เป็นข้อความด้วย Tika parser: {file_path}")
+            try:
+                parsed_pdf = tika_parser.from_file(file_path)
+                text = parsed_pdf['content'] if parsed_pdf['content'] else ""
+                if not text:
+                    print("⚠️ Tika ไม่สามารถแยกข้อความจาก PDF ได้ หรือไฟล์ไม่มีข้อความ")
+                    print("กรุณาลองใช้ EasyOCR (ตั้งค่า USE_OCR = True) เพื่อแปลง PDF เป็นข้อความ")
                     text = ""
-          
+                else:
+                    preview_length = min(500, len(text))
+                    print(f"Tika แยกข้อความได้ {len(text)} ตัวอักษร")
+                    print(f"ตัวอย่างข้อความ: {text[:preview_length]}...")
+            except Exception as e:
+                print(f"⚠️ เกิดข้อผิดพลาดในการใช้ Tika: {e}")
+                print("กรุณาลองใช้ EasyOCR (ตั้งค่า USE_OCR = True) เพื่อแปลง PDF เป็นข้อความ")
+                text = ""
         
         # แบ่งเอกสารเป็นส่วนย่อย
         chunks = self.text_splitter.split_text(text)
