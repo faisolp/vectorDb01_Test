@@ -45,6 +45,9 @@ venv.bak/
 milvus/
 data/
 
+volumes/
+.docker/
+.docker-gpu/
 # Logs
 logs/
 *.log

@@ -5,9 +5,12 @@ import torch
 import numpy as np
 from pymilvus import connections, FieldSchema, CollectionSchema, DataType, Collection, utility
 
-# โหลดโมเดล Sentence Transformers (public model)
+# 1. ทางเลือกที่แนะนำคือใช้ LaBSE จาก sentence-transformers
+# ซึ่งออกแบบมาสำหรับการสร้าง embedding โดยเฉพาะ และรองรับหลายภาษารวมทั้งไทย
 from sentence_transformers import SentenceTransformer
-model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# สร้าง instance ของ model
+model = SentenceTransformer('sentence-transformers/LaBSE')
 model.eval()
 
 # ฟังก์ชันสำหรับสร้าง embedding
@@ -21,6 +24,7 @@ all_chunks = []
 chunk_to_file_map = []
 
 try:
+    print(f"กำลังโหลดไฟล์: {pdf_path}")
     loader = PyPDFLoader(pdf_path)
     pages = loader.load()
     text = " ".join([page.page_content for page in pages])
@@ -33,33 +37,46 @@ try:
     chunks = text_splitter.split_text(text)
     all_chunks.extend(chunks)
     chunk_to_file_map.extend(["Vector Database.pdf"] * len(chunks))
+    print(f"แบ่งเอกสารเป็น {len(chunks)} ส่วนย่อย")
 except Exception as e:
     print(f"เกิดข้อผิดพลาดในการโหลดไฟล์ {pdf_path}: {e}")
+    exit(1)
 
 # สร้าง embeddings
-embeddings = [get_embedding(chunk) for chunk in all_chunks]
+print("กำลังสร้าง embeddings...")
+embeddings = []
+for i, chunk in enumerate(all_chunks):
+    if i % 10 == 0:
+        print(f"สร้าง embedding {i}/{len(all_chunks)}")
+    embedding = get_embedding(chunk)
+    embeddings.append(embedding)
 
 # เชื่อมต่อกับ Milvus
+print("กำลังเชื่อมต่อกับ Milvus...")
 connections.connect("default", host="localhost", port="19530")
+print("เชื่อมต่อกับ Milvus เรียบร้อยแล้ว")
 
 # สร้าง collection ใน Milvus (ถ้ายังไม่มี)
-collection_name = "pdf_collection"
-dimension = 384  # ขนาด dimension ของ all-MiniLM-L6-v2
+collection_name = "pdf_collection_thai_labse"
+dimension = 768  # ขนาด dimension ของ LaBSE
 
 # ตรวจสอบว่า collection มีอยู่แล้วหรือไม่
 if utility.has_collection(collection_name):
+    print(f"ใช้ collection ที่มีอยู่แล้ว: {collection_name}")
     collection = Collection(name=collection_name)
 else:
+    print(f"สร้าง collection ใหม่: {collection_name}")
     fields = [
         FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
         FieldSchema(name="file_name", dtype=DataType.VARCHAR, max_length=256),
         FieldSchema(name="text_chunk", dtype=DataType.VARCHAR, max_length=65535),
         FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=dimension)
     ]
-    schema = CollectionSchema(fields=fields, description="PDF Documents with DeepSeek Embeddings")
+    schema = CollectionSchema(fields=fields, description="PDF Documents with LaBSE Embeddings")
     collection = Collection(name=collection_name, schema=schema)
     
     # สร้าง index
+    print("กำลังสร้าง index...")
     index_params = {
         "metric_type": "COSINE",  # หรือใช้ "L2" ขึ้นอยู่กับความต้องการ
         "index_type": "HNSW",
@@ -67,23 +84,26 @@ else:
     }
     collection.create_index(field_name="embedding", index_params=index_params)
 
+# เปิดใช้งาน collection
+print("กำลังโหลด collection...")
+collection.load()
+
 # เตรียมข้อมูลสำหรับ insert
 entities = [
-    [i for i in range(len(all_chunks))],  # id จะถูกสร้างอัตโนมัติเพราะเรากำหนด auto_id=True
     chunk_to_file_map,  # file_name
     all_chunks,  # text_chunk
     embeddings  # embedding
 ]
 
-# เปิดใช้งาน collection
-collection.load()
-
 # เพิ่มข้อมูล
+print(f"กำลังเพิ่มข้อมูล {len(all_chunks)} chunks...")
 collection.insert(entities)
 collection.flush()  # ยืนยันว่าข้อมูลถูกบันทึก
+print("เพิ่มข้อมูลเรียบร้อยแล้ว")
 
 # ตัวอย่างการค้นหา
-query_text = "คำถามที่ต้องการค้นหา"
+query_text = "ฐานข้อมูลเวกเตอร์คืออะไร"  # ตัวอย่างคำถามภาษาไทย
+print(f"กำลังค้นหา: '{query_text}'")
 query_embedding = get_embedding(query_text)
 
 search_params = {
@@ -100,6 +120,7 @@ results = collection.search(
 )
 
 # แสดงผลลัพธ์
+print("\nผลลัพธ์การค้นหา:")
 for hits in results:
     for hit in hits:
         print(f"Score: {hit.score}")
@@ -108,4 +129,6 @@ for hits in results:
         print("----------------------------")
 
 # ปิดการเชื่อมต่อ
+print("กำลังปิดการเชื่อมต่อ...")
 connections.disconnect("default")
+print("เสร็จสิ้น!")
