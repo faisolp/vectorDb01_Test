@@ -3,27 +3,47 @@
 """
 import os
 import datetime
-from langchain_community.document_loaders import PyPDFLoader
+import importlib.util
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from src.document.ocr_processor import OCRProcessor
+from src.config import CHUNK_SIZE, CHUNK_OVERLAP, USE_OCR, OCR_LANG, OCR_CONFIG
+from tika import parser as tika_parser
 
 class DocumentProcessor:
     """
     คลาสสำหรับการประมวลผลเอกสาร PDF
     """
-    def __init__(self, chunk_size=1000, chunk_overlap=200):
+    def __init__(self, chunk_size=None, chunk_overlap=None, use_ocr=None, ocr_lang=None, ocr_config=None):
         """
         สร้าง instance ของ DocumentProcessor
         
         Args:
             chunk_size (int): ขนาดของข้อความแต่ละส่วน
             chunk_overlap (int): จำนวนตัวอักษรที่ซ้อนกันในแต่ละส่วน
+            use_ocr (bool): ใช้ OCR หรือไม่
+            ocr_lang (str): ภาษาที่ใช้ใน OCR
+            ocr_config (str): การตั้งค่า OCR
         """
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
+        # ใช้ค่าจาก config ถ้าไม่ได้ระบุ
+        self.chunk_size = chunk_size if chunk_size is not None else CHUNK_SIZE
+        self.chunk_overlap = chunk_overlap if chunk_overlap is not None else CHUNK_OVERLAP
+        self.use_ocr = use_ocr if use_ocr is not None else USE_OCR
+        self.ocr_lang = ocr_lang if ocr_lang is not None else OCR_LANG
+        self.ocr_config = ocr_config if ocr_config is not None else OCR_CONFIG
+        
         self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap
         )
+        
+        if self.use_ocr:
+            try:
+                self.ocr_processor = OCRProcessor(lang=self.ocr_lang, config=self.ocr_config)
+                print("เปิดใช้งาน OCR สำหรับการแปลงไฟล์ PDF")
+            except Exception as e:
+                print(f"ไม่สามารถใช้งาน OCR ได้: {e}")
+                print("จะใช้วิธีการแปลงแบบปกติแทน")
+                self.use_ocr = False
     
     def should_process_file(self, file_path, collection):
         """
@@ -83,9 +103,30 @@ class DocumentProcessor:
         file_mod_time = os.path.getmtime(file_path)
         
         print(f"กำลังโหลดไฟล์: {file_path}")
-        loader = PyPDFLoader(file_path)
-        pages = loader.load()
-        text = " ".join([page.page_content for page in pages])
+        
+        # ใช้ OCR หรือวิธีปกติในการแปลง PDF เป็นข้อความ
+        if self.use_ocr:
+            text = self.ocr_processor.process_pdf(file_path)
+        else:
+            # ใช้ Tika parser
+        
+                print(f"กำลังแปลง PDF เป็นข้อความด้วย Tika parser: {file_path}")
+                try:
+                    parsed_pdf = tika_parser.from_file(file_path)
+                    text = parsed_pdf['content'] if parsed_pdf['content'] else ""
+                    if not text:
+                        print("⚠️ Tika ไม่สามารถแยกข้อความจาก PDF ได้ หรือไฟล์ไม่มีข้อความ")
+                        print("กรุณาลองใช้ OCR (ตั้งค่า USE_OCR = True) เพื่อแปลง PDF เป็นข้อความ")
+                        text = ""
+                    else:
+                        preview_length = min(500, len(text))
+                        print(f"Tika แยกข้อความได้ {len(text)} ตัวอักษร")
+                        print(f"ตัวอย่างข้อความ: {text[:preview_length]}...")
+                except Exception as e:
+                    print(f"⚠️ เกิดข้อผิดพลาดในการใช้ Tika: {e}")
+                    print("กรุณาลองใช้ OCR (ตั้งค่า USE_OCR = True) เพื่อแปลง PDF เป็นข้อความ")
+                    text = ""
+          
         
         # แบ่งเอกสารเป็นส่วนย่อย
         chunks = self.text_splitter.split_text(text)

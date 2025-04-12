@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.embedding.model import EmbeddingModel
 from src.document.processor import DocumentProcessor
 from src.database.vector_db import VectorDatabase
-from src.config import PDF_PATH, COLLECTION_NAME, MODEL_NAME
+from src.config import PDF_PATH, COLLECTION_NAME, MODEL_NAME, USE_OCR
 
 def main():
     try:
@@ -21,7 +21,7 @@ def main():
         model = EmbeddingModel(model_name=MODEL_NAME)
         
         # สร้าง document processor
-        doc_processor = DocumentProcessor()
+        doc_processor = DocumentProcessor(use_ocr=USE_OCR)
         
         # สร้างการเชื่อมต่อกับ vector database
         vector_db = VectorDatabase(
