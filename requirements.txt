@@ -1,0 +1,14 @@
+langchain==0.3.23
+langchain-core==0.3.51
+langchain-text-splitters==0.3.8
+langchain-community==0.3.21
+sentence-transformers==4.0.2
+transformers==4.51.2
+torch==2.6.0
+pymilvus==2.5.6
+numpy==2.2.4
+pandas==2.2.3
+scikit-learn==1.6.1
+matplotlib==3.10.1
+pypdf==5.4.0
+python-dotenv==1.1.0
